@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events'
-import { join } from 'path'
-const lib: AddonExports = require('node-gyp-build')(join(__dirname, '..'))
+
+const lib: AddonExports = require('node-gyp-build')(__dirname)
 
 interface AddonExports {
   start (cb: (e: any) => void): void

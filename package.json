@@ -18,8 +18,8 @@
     "keyboard",
     "mouse"
   ],
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "index.js",
+  "types": "index.d.ts",
   "scripts": {
     "install": "node-gyp-build",
     "prebuild": "prebuildify --napi",
@@ -29,7 +29,6 @@
     "apply-libuiohook-patch": "git -C ./libuiohook apply ../src/libuiohook.patch"
   },
   "files": [
-    "dist",
     "binding.gyp",
     "libuiohook/src",
     "libuiohook/include",
@@ -46,7 +45,7 @@
     "node-gyp-build": "4.x.x"
   },
   "prebuild": {
-    "test": "dist/prebuild-test-noop.js"
+    "test": "prebuild-test-noop.js"
   },
   "gypfile": true,
   "engines": {
