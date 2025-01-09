@@ -2,11 +2,11 @@
   "name": "uiohook-napi",
   "version": "1.5.4",
   "author": {
-    "name": "Alexander Drozdov"
+    "name": "Manob Biswas, Alexander Drozdov"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/SnosMe/uiohook-napi.git"
+    "url": "https://github.com/manobendro/uiohook-napi.git"
   },
   "license": "MIT",
   "keywords": [
@@ -29,6 +29,7 @@
     "apply-libuiohook-patch": "git -C ./libuiohook apply ../src/libuiohook.patch"
   },
   "files": [
+    "index.d.ts",
     "binding.gyp",
     "libuiohook/src",
     "libuiohook/include",

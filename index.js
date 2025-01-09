@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.uIOhook = exports.UiohookKey = exports.WheelDirection = exports.EventType = void 0;
 const events_1 = require("events");
-console.log('UIOHOOK-napi dir.',__dirname);
+// console.log('UIOHOOK-napi dir.',__dirname);
 const lib = require('node-gyp-build')(__dirname);
 
 var KeyToggle;
