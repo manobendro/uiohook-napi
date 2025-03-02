@@ -117,3 +117,6 @@ dist
 build
 prebuilds
 bin
+
+# Add packed archive for npm install
+!packed/uiohook-napi-1.5.4.tgz
