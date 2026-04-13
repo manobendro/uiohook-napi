@@ -177,8 +177,11 @@ static void build_layout_scancode_table() {
         // Already on main thread, safe to call TIS APIs directly.
         build_layout_scancode_table_impl(NULL);
     } else {
-        // TIS APIs require the main thread; dispatch synchronously.
-        dispatch_sync_f(dispatch_get_main_queue(), NULL, build_layout_scancode_table_impl);
+        // TIS APIs require the main thread; dispatch asynchronously to avoid
+        // deadlock during startup (main thread may be blocked waiting for hook).
+        // The layout_remap_initialized flag ensures safe fallback to the static
+        // table until the async block executes.
+        dispatch_async_f(dispatch_get_main_queue(), NULL, build_layout_scancode_table_impl);
     }
 }
 
