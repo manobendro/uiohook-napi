@@ -18,6 +18,8 @@
 
 #ifdef USE_APPLICATION_SERVICES
 #include <CoreFoundation/CoreFoundation.h>
+#include <dispatch/dispatch.h>
+#include <pthread.h>
 #endif
 #ifndef USE_WEAK_IMPORT
 #include <dlfcn.h>
@@ -40,6 +42,7 @@ static UInt32 deadkey_state;
 #define LAYOUT_REMAP_TABLE_SIZE 128
 static uint16_t layout_scancode_table[LAYOUT_REMAP_TABLE_SIZE];
 static bool layout_remap_initialized = false;
+static bool layout_observer_registered = false;
 
 // Maps an ASCII character to the corresponding VC_ scancode.
 static uint16_t char_to_vc_scancode(UniChar ch) {
@@ -98,8 +101,10 @@ static uint16_t char_to_vc_scancode(UniChar ch) {
     }
 }
 
-// Build the layout-aware remap table using UCKeyTranslate.
-static void build_layout_scancode_table() {
+// Implementation that performs TIS lookups. MUST run on the main thread.
+static void build_layout_scancode_table_impl(void *info) {
+    (void)info;
+
     // Initialize all entries to VC_UNDEFINED (no remap).
     for (int i = 0; i < LAYOUT_REMAP_TABLE_SIZE; i++) {
         layout_scancode_table[i] = VC_UNDEFINED;
@@ -164,6 +169,17 @@ static void build_layout_scancode_table() {
 
     logger(LOG_LEVEL_INFO, "%s [%u]: Layout-aware scancode remap table built successfully.\n",
             __FUNCTION__, __LINE__);
+}
+
+// Build the layout-aware remap table, marshaling to the main thread if needed.
+static void build_layout_scancode_table() {
+    if (pthread_main_np()) {
+        // Already on main thread, safe to call TIS APIs directly.
+        build_layout_scancode_table_impl(NULL);
+    } else {
+        // TIS APIs require the main thread; dispatch synchronously.
+        dispatch_sync_f(dispatch_get_main_queue(), NULL, build_layout_scancode_table_impl);
+    }
 }
 
 // Notification callback for keyboard layout changes.
@@ -682,15 +698,18 @@ void load_input_helper() {
     // Build the layout-aware scancode remap table.
     build_layout_scancode_table();
 
-    // Register for keyboard layout change notifications.
-    CFNotificationCenterAddObserver(
-        CFNotificationCenterGetDistributedCenter(),
-        NULL,
-        keyboard_layout_changed_callback,
-        kTISNotifySelectedKeyboardInputSourceChanged,
-        NULL,
-        CFNotificationSuspensionBehaviorDeliverImmediately
-    );
+    // Register for keyboard layout change notifications (once only).
+    if (!layout_observer_registered) {
+        CFNotificationCenterAddObserver(
+            CFNotificationCenterGetDistributedCenter(),
+            layout_scancode_table,
+            keyboard_layout_changed_callback,
+            kTISNotifySelectedKeyboardInputSourceChanged,
+            NULL,
+            CFNotificationSuspensionBehaviorDeliverImmediately
+        );
+        layout_observer_registered = true;
+    }
     #endif
 }
 
@@ -704,13 +723,16 @@ void unload_input_helper() {
     #endif
 
     #if defined(USE_APPLICATION_SERVICES)
-    // Remove the keyboard layout change observer.
-    CFNotificationCenterRemoveObserver(
-        CFNotificationCenterGetDistributedCenter(),
-        NULL,
-        kTISNotifySelectedKeyboardInputSourceChanged,
-        NULL
-    );
+    // Remove the keyboard layout change observer (if registered).
+    if (layout_observer_registered) {
+        CFNotificationCenterRemoveObserver(
+            CFNotificationCenterGetDistributedCenter(),
+            layout_scancode_table,
+            kTISNotifySelectedKeyboardInputSourceChanged,
+            NULL
+        );
+        layout_observer_registered = false;
+    }
     layout_remap_initialized = false;
     #endif
 }
