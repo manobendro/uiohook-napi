@@ -120,3 +120,8 @@ bin
 
 # Add packed archive for npm install
 !packed/uiohook-napi-1.5.4.tgz
+
+# .DS_Store
+.DS_Store
+*/.DS_Store
+*/**/.DS_Store
