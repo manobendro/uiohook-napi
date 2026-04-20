@@ -25,6 +25,9 @@
 #include <dlfcn.h>
 #endif
 #include <stdbool.h>
+#ifdef USE_APPLICATION_SERVICES
+#include <stdatomic.h>
+#endif
 #include <uiohook.h>
 
 #include "input_helper.h"
@@ -41,7 +44,8 @@ static UInt32 deadkey_state;
 #if defined(USE_APPLICATION_SERVICES)
 #define LAYOUT_REMAP_TABLE_SIZE 128
 static uint16_t layout_scancode_table[LAYOUT_REMAP_TABLE_SIZE];
-static bool layout_remap_initialized = false;
+static UInt64 layout_reverse_table[LAYOUT_REMAP_TABLE_SIZE];
+static _Atomic bool layout_remap_initialized = false;
 static bool layout_observer_registered = false;
 
 // Maps an ASCII character to the corresponding VC_ scancode.
@@ -105,9 +109,13 @@ static uint16_t char_to_vc_scancode(UniChar ch) {
 static void build_layout_scancode_table_impl(void *info) {
     (void)info;
 
-    // Initialize all entries to VC_UNDEFINED (no remap).
+    // Reset the flag so readers fall back to the static table during rebuild.
+    atomic_store_explicit(&layout_remap_initialized, false, memory_order_release);
+
+    // Initialize all entries to VC_UNDEFINED / kVK_Undefined (no remap).
     for (int i = 0; i < LAYOUT_REMAP_TABLE_SIZE; i++) {
         layout_scancode_table[i] = VC_UNDEFINED;
+        layout_reverse_table[i] = kVK_Undefined;
     }
 
     TISInputSourceRef input_source = TISCopyCurrentKeyboardLayoutInputSource();
@@ -164,7 +172,15 @@ static void build_layout_scancode_table_impl(void *info) {
         }
     }
 
-    layout_remap_initialized = true;
+    // Build reverse table: VC scancode -> macOS keycode.
+    for (int i = 0; i < LAYOUT_REMAP_TABLE_SIZE; i++) {
+        if (layout_scancode_table[i] != VC_UNDEFINED) {
+            layout_reverse_table[layout_scancode_table[i]] = i;
+        }
+    }
+
+    // Publish the table with release semantics so readers see all writes.
+    atomic_store_explicit(&layout_remap_initialized, true, memory_order_release);
     CFRelease(input_source);
 
     logger(LOG_LEVEL_INFO, "%s [%u]: Layout-aware scancode remap table built successfully.\n",
@@ -234,6 +250,7 @@ bool is_accessibility_enabled() {
                     &kCFTypeDictionaryValueCallBacks);
 
             is_enabled = (*AXIsProcessTrustedWithOptions_t)(options);
+            CFRelease(options);
         }
     } else {
         if (dlError != NULL) {
@@ -397,25 +414,25 @@ static const uint16_t keycode_scancode_table[][2] = {
     /*   3 */    { VC_F,                    kVK_ANSI_2               },    // 0x03
     /*   4 */    { VC_H,                    kVK_ANSI_3               },    // 0x04
     /*   5 */    { VC_G,                    kVK_ANSI_4               },    // 0x05
-    /*   6 */    { VC_Z,                    kVK_ANSI_5               },    // 0x07
-    /*   7 */    { VC_X,                    kVK_ANSI_6               },    // 0x08
-    /*   8 */    { VC_C,                    kVK_ANSI_7               },    // 0x09
-    /*   9 */    { VC_V,                    kVK_ANSI_8               },    // 0x0A
-    /*  10 */    { VC_UNDEFINED,            kVK_ANSI_9               },    // 0x0B
-    /*  11 */    { VC_B,                    kVK_ANSI_0               },    // 0x0C
-    /*  12 */    { VC_Q,                    kVK_ANSI_Minus           },    // 0x0D
-    /*  13 */    { VC_W,                    kVK_ANSI_Equal           },    // 0x0E
-    /*  14 */    { VC_E,                    kVK_Delete               },    // 0x0F
-    /*  15 */    { VC_R,                    kVK_Tab                  },    // 0x10
-    /*  16 */    { VC_Y,                    kVK_ANSI_Q               },    // 0x11
-    /*  17 */    { VC_T,                    kVK_ANSI_W               },    // 0x12
-    /*  18 */    { VC_1,                    kVK_ANSI_E               },    // 0x13
-    /*  19 */    { VC_2,                    kVK_ANSI_R               },    // 0x14
-    /*  20 */    { VC_3,                    kVK_ANSI_T               },    // 0x15
-    /*  21 */    { VC_4,                    kVK_ANSI_Y               },    // 0x16
-    /*  22 */    { VC_6,                    kVK_ANSI_U               },    // 0x17
-    /*  23 */    { VC_5,                    kVK_ANSI_I               },    // 0x18
-    /*  24 */    { VC_EQUALS,               kVK_ANSI_O               },    // 0x19
+    /*   6 */    { VC_Z,                    kVK_ANSI_5               },    // 0x06
+    /*   7 */    { VC_X,                    kVK_ANSI_6               },    // 0x07
+    /*   8 */    { VC_C,                    kVK_ANSI_7               },    // 0x08
+    /*   9 */    { VC_V,                    kVK_ANSI_8               },    // 0x09
+    /*  10 */    { VC_UNDEFINED,            kVK_ANSI_9               },    // 0x0A
+    /*  11 */    { VC_B,                    kVK_ANSI_0               },    // 0x0B
+    /*  12 */    { VC_Q,                    kVK_ANSI_Minus           },    // 0x0C
+    /*  13 */    { VC_W,                    kVK_ANSI_Equal           },    // 0x0D
+    /*  14 */    { VC_E,                    kVK_Delete               },    // 0x0E
+    /*  15 */    { VC_R,                    kVK_Tab                  },    // 0x0F
+    /*  16 */    { VC_Y,                    kVK_ANSI_Q               },    // 0x10
+    /*  17 */    { VC_T,                    kVK_ANSI_W               },    // 0x11
+    /*  18 */    { VC_1,                    kVK_ANSI_E               },    // 0x12
+    /*  19 */    { VC_2,                    kVK_ANSI_R               },    // 0x13
+    /*  20 */    { VC_3,                    kVK_ANSI_T               },    // 0x14
+    /*  21 */    { VC_4,                    kVK_ANSI_Y               },    // 0x15
+    /*  22 */    { VC_6,                    kVK_ANSI_U               },    // 0x16
+    /*  23 */    { VC_5,                    kVK_ANSI_I               },    // 0x17
+    /*  24 */    { VC_EQUALS,               kVK_ANSI_O               },    // 0x18
     /*  25 */    { VC_9,                    kVK_ANSI_P               },    // 0x19
     /*  26 */    { VC_7,                    kVK_ANSI_LeftBracket     },    // 0x1A
     /*  27 */    { VC_MINUS,                kVK_ANSI_RightBracket    },    // 0x1B
@@ -659,7 +676,7 @@ uint16_t keycode_to_scancode(UInt64 keycode) {
     if (keycode < sizeof(keycode_scancode_table) / sizeof(keycode_scancode_table[0])) {
         #if defined(USE_APPLICATION_SERVICES)
         // Check layout-aware remap table first for physical keycodes < 128.
-        if (layout_remap_initialized && keycode < LAYOUT_REMAP_TABLE_SIZE) {
+        if (atomic_load_explicit(&layout_remap_initialized, memory_order_acquire) && keycode < LAYOUT_REMAP_TABLE_SIZE) {
             uint16_t remapped = layout_scancode_table[keycode];
             if (remapped != VC_UNDEFINED) {
                 return remapped;
@@ -675,6 +692,16 @@ uint16_t keycode_to_scancode(UInt64 keycode) {
 
 UInt64 scancode_to_keycode(uint16_t scancode) {
     UInt64 keycode = kVK_Undefined;
+
+    #if defined(USE_APPLICATION_SERVICES)
+    // Check layout-aware reverse remap table first.
+    if (atomic_load_explicit(&layout_remap_initialized, memory_order_acquire) && scancode < LAYOUT_REMAP_TABLE_SIZE) {
+        UInt64 remapped = layout_reverse_table[scancode];
+        if (remapped != kVK_Undefined) {
+            return remapped;
+        }
+    }
+    #endif
 
     // Bound check 0 <= keycode < 128
     if (scancode < 128) {
